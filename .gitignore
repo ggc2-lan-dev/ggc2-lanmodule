@@ -1,0 +1,6 @@
+*.user
+
+.vs/
+private/
+**/bin/
+**/obj/
