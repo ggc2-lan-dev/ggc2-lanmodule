@@ -30,17 +30,28 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <GamePath>C:\Program Files\Steam\steamapps\common\Guns, Gore and Cannoli 2</GamePath>
+  </PropertyGroup>
   <ItemGroup>
-    <Reference Include="0Harmony">
-      <HintPath>..\..\..\..\..\Program Files\Steam\steamapps\common\Guns, Gore and Cannoli 2\BepInEx\core\0Harmony.dll</HintPath>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GamePath)\ggc2_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\..\..\..\Program Files\Steam\steamapps\common\Guns, Gore and Cannoli 2\ggc2_Data\Managed\Assembly-CSharp.dll</HintPath>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GamePath)\ggc2_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.Networking">
+      <HintPath>$(GamePath)\ggc2_Data\Managed\UnityEngine.Networking.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GamePath)\BepInEx\core\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="BepInEx">
-      <HintPath>..\..\..\..\..\Program Files\Steam\steamapps\common\Guns, Gore and Cannoli 2\BepInEx\core\BepInEx.dll</HintPath>
+      <HintPath>$(GamePath)\BepInEx\core\BepInEx.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />
@@ -51,14 +62,6 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
-    <Reference Include="UnityEngine">
-      <HintPath>..\..\..\..\..\Program Files\Steam\steamapps\common\Guns, Gore and Cannoli 2\ggc2_Data\Managed\UnityEngine.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="UnityEngine.Networking">
-      <HintPath>..\..\..\..\..\Program Files\Steam\steamapps\common\Guns, Gore and Cannoli 2\ggc2_Data\Managed\UnityEngine.Networking.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ggc2.lanmodule.cs" />

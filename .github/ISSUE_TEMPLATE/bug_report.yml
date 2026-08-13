@@ -1,0 +1,34 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: textarea-problem
+    attributes:
+      label: What happened?
+      description: Describe the problem, and how to reproduce it if you can.
+      placeholder: e.g. "STOP HOSTING" doesn't return me to the main menu.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: version-module
+    attributes:
+      label: Module version
+      description: Check the version shown in the mod's panel in the game's main menu, or check the file properties of your `GGC2LanModule.dll`.
+      options:
+        - v1.4.0
+        - v1.3.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: version-os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Mac
+        - Other
+    validations:
+      required: true

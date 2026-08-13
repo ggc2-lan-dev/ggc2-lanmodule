@@ -1,8 +1,9 @@
 ﻿using BepInEx;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Networking;
 
-[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.3.0")]
+[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.4.0")]
 public class LanFixPlugin : BaseUnityPlugin
 {
     // ===== Colors =====
@@ -10,6 +11,7 @@ public class LanFixPlugin : BaseUnityPlugin
     private static readonly Color ColorBlack = Color.black;
     private static readonly Color ColorButtonMainHover = new Color(30f / 255f, 30f / 255f, 30f / 255f);
     private static readonly Color ColorButtonMenuHover = new Color(225f / 255f, 225f / 255f, 225f / 255f);
+    private static readonly Color ColorButtonBlockHover = new Color(150f / 255f, 150f / 255f, 150f / 255f);
 
     // ===== Layout, at reference resolution 1920x1080 =====
     private const float RefWidth = 1920f;
@@ -32,12 +34,15 @@ public class LanFixPlugin : BaseUnityPlugin
     private const float BtnH = 42f;
     private const float BtnGap = 16f;
     private const float BtnFontSize = 18f;
+    private const float PingFontSize = 16f;
+    private const float PingW = 90f;
 
     // ===== LobbyManagerGGC.State / DisconnectType values used by the game
     // (named here since the underlying enums aren't accessible by name from
     // outside the game's assembly in a clean way) =====
     private const LobbyManagerGGC.State StateMainMenu = (LobbyManagerGGC.State)0;
     private const LobbyManagerGGC.State StateLobby = (LobbyManagerGGC.State)1;
+    private const LobbyManagerGGC.State StateInGame = (LobbyManagerGGC.State)3;
     private const LobbyManagerGGC.DisconnectType DisconnectVoluntary = (LobbyManagerGGC.DisconnectType)3;
 
     // ===== Runtime state =====
@@ -63,6 +68,7 @@ public class LanFixPlugin : BaseUnityPlugin
     private GUIStyle toggleBtnStyle;
     private GUIStyle leftHeaderStyle;
     private GUIStyle rightHeaderStyle;
+    private GUIStyle pingStyle;
     private float lastScale = -1f;
 
     private void Awake()
@@ -91,7 +97,7 @@ public class LanFixPlugin : BaseUnityPlugin
         if (isHosting && LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateMainMenu)
         {
             isHosting = false;
-            suppressDisconnectKick = false;
+            SetOnlineSession(false);
         }
     }
 
@@ -153,6 +159,15 @@ public class LanFixPlugin : BaseUnityPlugin
             rightHeaderStyle = new GUIStyle(headerStyle) { alignment = TextAnchor.MiddleRight };
         }
 
+        if (pingStyle == null)
+        {
+            pingStyle = new GUIStyle();
+            pingStyle.font = arialFont;
+            pingStyle.fontStyle = FontStyle.Normal;
+            pingStyle.normal.textColor = Color.red;
+            pingStyle.alignment = TextAnchor.MiddleRight;
+        }
+
         // Font sizes scale with the screen resolution, so only recompute
         // them when the scale factor actually changes, not every frame.
         if (scaleChanged)
@@ -162,6 +177,7 @@ public class LanFixPlugin : BaseUnityPlugin
             toggleBtnStyle.fontSize = Mathf.RoundToInt(ToggleFontSize * scale);
             leftHeaderStyle.fontSize = headerStyle.fontSize;
             rightHeaderStyle.fontSize = headerStyle.fontSize;
+            pingStyle.fontSize = Mathf.RoundToInt(PingFontSize * scale);
             lastScale = scale;
         }
     }
@@ -173,6 +189,15 @@ public class LanFixPlugin : BaseUnityPlugin
         GUI.color = Color.white;
     }
 
+    // Keeps our own flag and the game's own (otherwise unused) pingVisible
+    // field in sync - purely cosmetic, nothing reads pingVisible today, but
+    // it's the field the devs clearly intended for this exact purpose.
+    private void SetOnlineSession(bool active)
+    {
+        suppressDisconnectKick = active;
+        if (LobbyManagerGGC.Instance != null) LobbyManagerGGC.Instance.pingVisible = active;
+    }
+
     private void CancelSearch()
     {
         NetworkDiscoveryManagerGGC.StopListeningForNetworkMatches();
@@ -182,7 +207,7 @@ public class LanFixPlugin : BaseUnityPlugin
 
     private void StopHosting()
     {
-        suppressDisconnectKick = false;
+        SetOnlineSession(false);
         isHosting = false;
         LobbyManagerGGC.Instance.DestroyMatch(DisconnectVoluntary);
     }
@@ -194,7 +219,7 @@ public class LanFixPlugin : BaseUnityPlugin
         LobbyManagerGGC.Instance.ChangeState(StateLobby);
         WindowManager.Instance.OpenWindow(new LobbyWindow(false));
 
-        suppressDisconnectKick = true;
+        SetOnlineSession(true);
         isHosting = true;
     }
 
@@ -213,9 +238,30 @@ public class LanFixPlugin : BaseUnityPlugin
             LobbyManagerGGC.Instance.ChangeState(StateLobby);
             WindowManager.Instance.OpenWindow(new LobbyWindow(false));
 
-            suppressDisconnectKick = true;
+            SetOnlineSession(true);
             listening = false;
         });
+    }
+
+    // Ping (RTT) display - just your own ping, as a plain "XXms" number.
+    // Works the same whether you're hosting or connected as a client:
+    // NetworkClient.GetRTT() reports each player's own connection.
+    private string BuildPingText(LobbyManagerGGC.State state)
+    {
+        if (LobbyManagerGGC.Instance == null) return null;
+        if (state != StateLobby && state != StateInGame) return null;
+
+        // state == InGame also covers regular offline/local play, since the
+        // game reuses the same networking manager for that too. Only show
+        // ping while we're actually in a session started via this mod.
+        if (!suppressDisconnectKick) return null;
+
+        NetworkClient client = LobbyManagerGGC.Instance.client;
+        if (client == null || !client.isConnected) return null;
+
+        int rtt = client.GetRTT();
+        if (rtt > 999) rtt = 999;
+        return rtt + "ms";
     }
 
     private void OnGUI()
@@ -229,20 +275,38 @@ public class LanFixPlugin : BaseUnityPlugin
             LobbyManagerGGC.Instance.networkManagerHud.showGUI = false;
         }
 
-        bool mainMenuOpen = IsMainMenuSceneLoaded() && !MainMenuGameState.MainMenuIsTransitional;
-
-        // Nothing at all outside the main menu - not during boot/loading,
-        // not during gameplay, not anywhere else.
-        if (!mainMenuOpen) return;
-
         float scale = GetScale();
         EnsureStyles(scale);
+        float margin = ScreenMargin * scale;
+        float gap = PanelToggleGap * scale;
+
+        bool mainMenuOpen = IsMainMenuSceneLoaded() && !MainMenuGameState.MainMenuIsTransitional;
 
         float toggleW = ToggleBtnW * scale;
         float toggleH = ToggleBtnH * scale;
-        float margin = ScreenMargin * scale;
-
         Rect toggleRect = new Rect(Screen.width - toggleW - margin, margin, toggleW, toggleH);
+
+        // Ping sits top-right too, to the left of the LAN button with the
+        // same gap the button uses toward the panel below it. When the LAN
+        // button isn't shown (outside the main menu), the ping shifts over
+        // into the button's own spot instead of leaving a gap there.
+        float pingW = PingW * scale;
+        Rect pingRect = mainMenuOpen
+            ? new Rect(toggleRect.x - gap - pingW, margin, pingW, toggleH)
+            : new Rect(toggleRect.x, margin, pingW, toggleH);
+
+        LobbyManagerGGC.State currentState = LobbyManagerGGC.Instance != null
+            ? LobbyManagerGGC.Instance.state
+            : StateMainMenu;
+        string pingText = BuildPingText(currentState);
+        if (pingText != null)
+        {
+            GUI.Label(pingRect, pingText, pingStyle);
+        }
+
+        // Nothing else outside the main menu - not during boot/loading,
+        // not during gameplay, not anywhere else.
+        if (!mainMenuOpen) return;
 
         DrawRect(toggleRect, toggleRect.Contains(Event.current.mousePosition) ? ColorButtonMainHover : ColorBlack);
         if (GUI.Button(toggleRect, GUIContent.none, GUIStyle.none))
@@ -275,11 +339,20 @@ public class LanFixPlugin : BaseUnityPlugin
         DrawRect(panelRect, ColorBlack);
 
         GUI.Label(headerRect, "GGC2LanModule", leftHeaderStyle);
-        GUI.Label(headerRect, "v1.3.0", rightHeaderStyle);
+        GUI.Label(headerRect, "v1.4.0", rightHeaderStyle);
 
         // ----- HOST LAN SERVER -----
-        DrawRect(hostRect, hostRect.Contains(Event.current.mousePosition) ? ColorButtonMenuHover : ColorWhite);
-        if (GUI.Button(hostRect, GUIContent.none, GUIStyle.none))
+        // Synced from the server to every player via UNET's SyncVar system,
+        // true during the ~3s countdown after "START THE GAME" is clicked.
+        // Works identically for the host and for joined clients - unlike a
+        // locally-tracked flag, which would only ever see the host's click.
+        // Also blocked once actually in-game, as a safety net - the panel
+        // isn't drawn there anyway, but better safe than sorry.
+        bool gameStarting = NetworkCommunicator.lobbyIsLockedForGameStart
+            || (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateInGame);
+
+        DrawRect(hostRect, gameStarting ? ColorButtonBlockHover : (hostRect.Contains(Event.current.mousePosition) ? ColorButtonMenuHover : ColorWhite));
+        if (!gameStarting && GUI.Button(hostRect, GUIContent.none, GUIStyle.none))
         {
             if (isHosting)
             {
@@ -294,8 +367,10 @@ public class LanFixPlugin : BaseUnityPlugin
         GUI.Label(hostRect, isHosting ? "STOP HOSTING" : "HOST LAN SERVER", whiteBtnStyle);
 
         // ----- FIND LAN SERVER -----
-        DrawRect(findRect, findRect.Contains(Event.current.mousePosition) ? ColorButtonMenuHover : ColorWhite);
-        if (GUI.Button(findRect, GUIContent.none, GUIStyle.none))
+        DrawRect(findRect, gameStarting
+            ? ColorButtonBlockHover
+            : (findRect.Contains(Event.current.mousePosition) ? ColorButtonMenuHover : ColorWhite));
+        if (!gameStarting && GUI.Button(findRect, GUIContent.none, GUIStyle.none))
         {
             if (listening)
             {
