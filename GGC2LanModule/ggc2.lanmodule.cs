@@ -3,8 +3,8 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
 
-[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.4.0")]
-public class LanFixPlugin : BaseUnityPlugin
+[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.5.0")]
+public class GGC2LanModule : BaseUnityPlugin
 {
     // ===== Colors =====
     private static readonly Color ColorWhite = Color.white;
@@ -73,7 +73,7 @@ public class LanFixPlugin : BaseUnityPlugin
 
     private void Awake()
     {
-        Logger.LogInfo("LanFixPlugin: Awake() called, plugin is active.");
+        Logger.LogInfo("GGC2LanModule: Awake() called, plugin is active.");
         arialFont = Font.CreateDynamicFontFromOSFont("Arial", 16);
 
         try
@@ -209,15 +209,41 @@ public class LanFixPlugin : BaseUnityPlugin
     {
         SetOnlineSession(false);
         isHosting = false;
-        LobbyManagerGGC.Instance.DestroyMatch(DisconnectVoluntary);
+
+        if (LobbyManagerGGC.Instance != null)
+        {
+            LobbyManagerGGC.Instance.DestroyMatch(DisconnectVoluntary);
+        }
+        // If Instance is already gone (e.g. the game tore down the session
+        // on its own between the click and this call), there's nothing left
+        // to destroy - our own state is already reset above, which is all
+        // that matters for the UI.
     }
 
     private void StartHosting()
     {
-        // Same call path as the game's own (hidden) "Local Network Game" option.
-        LobbyManagerGGC.Instance.CreateMatch(false);
-        LobbyManagerGGC.Instance.ChangeState(StateLobby);
-        WindowManager.Instance.OpenWindow(new LobbyWindow(false));
+        if (LobbyManagerGGC.Instance == null || WindowManager.Instance == null)
+        {
+            Logger.LogWarning("StartHosting: LobbyManagerGGC.Instance or WindowManager.Instance is null, aborting.");
+            return;
+        }
+
+        try
+        {
+            // Same call path as the game's own (hidden) "Local Network Game" option.
+            LobbyManagerGGC.Instance.CreateMatch(false);
+            LobbyManagerGGC.Instance.ChangeState(StateLobby);
+            WindowManager.Instance.OpenWindow(new LobbyWindow(false));
+        }
+        catch (System.Exception e)
+        {
+            Logger.LogError("StartHosting failed: " + e);
+            // Best-effort rollback so the button doesn't get stuck on
+            // "STOP HOSTING" for a session that never actually started.
+            SetOnlineSession(false);
+            isHosting = false;
+            return;
+        }
 
         SetOnlineSession(true);
         isHosting = true;
@@ -233,10 +259,28 @@ public class LanFixPlugin : BaseUnityPlugin
             // Stale if the search was cancelled (or restarted) since it began.
             if (thisSearch != searchToken) return;
 
-            // Same call path as the game's own LAN client "join" callback.
-            LobbyManagerGGC.ConnectViaIP(broadcast.ip);
-            LobbyManagerGGC.Instance.ChangeState(StateLobby);
-            WindowManager.Instance.OpenWindow(new LobbyWindow(false));
+            if (LobbyManagerGGC.Instance == null || WindowManager.Instance == null)
+            {
+                Logger.LogWarning("StartSearching callback: LobbyManagerGGC.Instance or WindowManager.Instance is null, aborting join.");
+                listening = false;
+                return;
+            }
+
+            try
+            {
+                // Same call path as the game's own LAN client "join" callback.
+                LobbyManagerGGC.ConnectViaIP(broadcast.ip);
+                LobbyManagerGGC.Instance.ChangeState(StateLobby);
+                WindowManager.Instance.OpenWindow(new LobbyWindow(false));
+            }
+            catch (System.Exception e)
+            {
+                Logger.LogError("StartSearching join failed: " + e);
+                // Don't call SetOnlineSession(true) below - session never
+                // actually started, so leave suppressDisconnectKick off.
+                listening = false;
+                return;
+            }
 
             SetOnlineSession(true);
             listening = false;
@@ -339,7 +383,7 @@ public class LanFixPlugin : BaseUnityPlugin
         DrawRect(panelRect, ColorBlack);
 
         GUI.Label(headerRect, "GGC2LanModule", leftHeaderStyle);
-        GUI.Label(headerRect, "v1.4.0", rightHeaderStyle);
+        GUI.Label(headerRect, "v1.5.0", rightHeaderStyle);
 
         // ----- HOST LAN SERVER -----
         // Synced from the server to every player via UNET's SyncVar system,
@@ -400,7 +444,7 @@ class Patch_TestConnection
 {
     static bool Prefix(ref System.Collections.IEnumerator __result)
     {
-        if (!LanFixPlugin.suppressDisconnectKick) return true;
+        if (!GGC2LanModule.suppressDisconnectKick) return true;
         __result = Empty();
         return false;
     }

@@ -17,6 +17,7 @@ body:
       label: Module version
       description: Check the version shown in the mod's panel in the game's main menu, or check the file properties of your `GGC2LanModule.dll`.
       options:
+        - v1.5.0
         - v1.4.0
         - v1.3.0
     validations:
