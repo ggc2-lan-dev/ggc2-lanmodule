@@ -3,15 +3,15 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
 
-[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.5.0")]
+[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.6.0")]
 public class GGC2LanModule : BaseUnityPlugin
 {
     // ===== Colors =====
     private static readonly Color ColorWhite = Color.white;
     private static readonly Color ColorBlack = Color.black;
-    private static readonly Color ColorButtonMainHover = new Color(30f / 255f, 30f / 255f, 30f / 255f);
-    private static readonly Color ColorButtonMenuHover = new Color(225f / 255f, 225f / 255f, 225f / 255f);
-    private static readonly Color ColorButtonBlockHover = new Color(150f / 255f, 150f / 255f, 150f / 255f);
+    private static readonly Color ColorToggleButtonHover = new Color(30f / 255f, 30f / 255f, 30f / 255f);
+    private static readonly Color ColorMenuButtonHover = new Color(225f / 255f, 225f / 255f, 225f / 255f);
+    private static readonly Color ColorMenuButtonBlock = new Color(150f / 255f, 150f / 255f, 150f / 255f);
 
     // ===== Layout, at reference resolution 1920x1080 =====
     private const float RefWidth = 1920f;
@@ -21,21 +21,22 @@ public class GGC2LanModule : BaseUnityPlugin
 
     private const float ToggleBtnW = 86f;
     private const float ToggleBtnH = 42f;
-    private const float ToggleFontSize = 18f;
-    private const float PanelToggleGap = 10f;
+    private const float ToggleBtnFontSize = 18f;
+    private const float ToggleBtnMargin = 10f;
 
-    private const float PanelW = 340f;
-    private const float PanelPadding = 20f;
+    private const float MenuW = 340f;
+    private const float MenuGap = 20f;
+    private const float MenuPadding = 20f;
+    
+    private const float MenuHeaderFontSize = 16f;
 
-    private const float HeaderFontSize = 16f;
-    private const float HeaderToButtonsGap = 20f;
+    private const float MenuBtnW = 300f;
+    private const float MenuBtnH = 42f;
+    private const float MenuBtnGap = 16f;
+    private const float MenuBtnFontSize = 18f;
 
-    private const float BtnW = 300f;
-    private const float BtnH = 42f;
-    private const float BtnGap = 16f;
-    private const float BtnFontSize = 18f;
-    private const float PingFontSize = 16f;
     private const float PingW = 90f;
+    private const float PingFontSize = 16f;
 
     // ===== LobbyManagerGGC.State / DisconnectType values used by the game
     // (named here since the underlying enums aren't accessible by name from
@@ -62,19 +63,40 @@ public class GGC2LanModule : BaseUnityPlugin
     // a search gets "cancelled" without a direct stop-and-forget API.
     private int searchToken = 0;
 
+    private bool gameStartLatched = false;
     private Font arialFont;
-    private GUIStyle headerStyle;
-    private GUIStyle whiteBtnStyle;
     private GUIStyle toggleBtnStyle;
-    private GUIStyle leftHeaderStyle;
-    private GUIStyle rightHeaderStyle;
+    private GUIStyle menuHeaderStyle;
+    private GUIStyle menuHeaderLeftStyle;
+    private GUIStyle menuHeaderRightStyle;
+    private GUIStyle menuBtnStyle;
     private GUIStyle pingStyle;
     private float lastScale = -1f;
 
     private void Awake()
     {
         Logger.LogInfo("GGC2LanModule: Awake() called, plugin is active.");
-        arialFont = Font.CreateDynamicFontFromOSFont("Arial", 16);
+
+        bool arialInstalled = false;
+        foreach (string name in Font.GetOSInstalledFontNames())
+        {
+            if (name == "Arial") { arialInstalled = true; break; }
+        }
+
+        if (arialInstalled)
+        {
+            arialFont = Font.CreateDynamicFontFromOSFont("Arial", 16);
+        }
+        else
+        {
+            Logger.LogWarning("GGC2LanModule: Arial not found on this system, falling back to the game's own (English) menu font.");
+            arialFont = Resources.Load<Font>("Fonts/HEADTH_");
+
+            if (arialFont == null)
+            {
+                Logger.LogError("GGC2LanModule: fallback font 'Fonts/HEADTH_' also not found - text may not render.");
+            }
+        }
 
         try
         {
@@ -98,6 +120,15 @@ public class GGC2LanModule : BaseUnityPlugin
         {
             isHosting = false;
             SetOnlineSession(false);
+        }
+        // If we're still searching for a LAN host but the player left the
+        // main menu some other way (e.g. started a regular offline game),
+        // the search must be stopped - otherwise the discovery listener
+        // keeps running in the background and could still join a LAN match
+        // mid-way through an unrelated solo session.
+        if (listening && LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state != StateMainMenu)
+        {
+            CancelSearch();
         }
     }
 
@@ -123,21 +154,21 @@ public class GGC2LanModule : BaseUnityPlugin
     {
         bool scaleChanged = !Mathf.Approximately(scale, lastScale);
 
-        if (headerStyle == null)
+        if (menuHeaderStyle == null)
         {
-            headerStyle = new GUIStyle();
-            headerStyle.font = arialFont;
-            headerStyle.fontStyle = FontStyle.Normal;
-            headerStyle.normal.textColor = ColorWhite;
+            menuHeaderStyle = new GUIStyle();
+            menuHeaderStyle.font = arialFont;
+            menuHeaderStyle.fontStyle = FontStyle.Normal;
+            menuHeaderStyle.normal.textColor = ColorWhite;
         }
 
-        if (whiteBtnStyle == null)
+        if (menuBtnStyle == null)
         {
-            whiteBtnStyle = new GUIStyle();
-            whiteBtnStyle.font = arialFont;
-            whiteBtnStyle.fontStyle = FontStyle.Normal;
-            whiteBtnStyle.normal.textColor = ColorBlack;
-            whiteBtnStyle.alignment = TextAnchor.MiddleCenter;
+            menuBtnStyle = new GUIStyle();
+            menuBtnStyle.font = arialFont;
+            menuBtnStyle.fontStyle = FontStyle.Normal;
+            menuBtnStyle.normal.textColor = ColorBlack;
+            menuBtnStyle.alignment = TextAnchor.MiddleCenter;
         }
 
         if (toggleBtnStyle == null)
@@ -149,14 +180,14 @@ public class GGC2LanModule : BaseUnityPlugin
             toggleBtnStyle.alignment = TextAnchor.MiddleCenter;
         }
 
-        if (leftHeaderStyle == null)
+        if (menuHeaderLeftStyle == null)
         {
-            leftHeaderStyle = new GUIStyle(headerStyle) { alignment = TextAnchor.MiddleLeft };
+            menuHeaderLeftStyle = new GUIStyle(menuHeaderStyle) { alignment = TextAnchor.MiddleLeft };
         }
 
-        if (rightHeaderStyle == null)
+        if (menuHeaderRightStyle == null)
         {
-            rightHeaderStyle = new GUIStyle(headerStyle) { alignment = TextAnchor.MiddleRight };
+            menuHeaderRightStyle = new GUIStyle(menuHeaderStyle) { alignment = TextAnchor.MiddleRight };
         }
 
         if (pingStyle == null)
@@ -172,11 +203,11 @@ public class GGC2LanModule : BaseUnityPlugin
         // them when the scale factor actually changes, not every frame.
         if (scaleChanged)
         {
-            headerStyle.fontSize = Mathf.RoundToInt(HeaderFontSize * scale);
-            whiteBtnStyle.fontSize = Mathf.RoundToInt(BtnFontSize * scale);
-            toggleBtnStyle.fontSize = Mathf.RoundToInt(ToggleFontSize * scale);
-            leftHeaderStyle.fontSize = headerStyle.fontSize;
-            rightHeaderStyle.fontSize = headerStyle.fontSize;
+            menuHeaderStyle.fontSize = Mathf.RoundToInt(MenuHeaderFontSize * scale);
+            menuBtnStyle.fontSize = Mathf.RoundToInt(MenuBtnFontSize * scale);
+            toggleBtnStyle.fontSize = Mathf.RoundToInt(ToggleBtnFontSize * scale);
+            menuHeaderLeftStyle.fontSize = menuHeaderStyle.fontSize;
+            menuHeaderRightStyle.fontSize = menuHeaderStyle.fontSize;
             pingStyle.fontSize = Mathf.RoundToInt(PingFontSize * scale);
             lastScale = scale;
         }
@@ -262,6 +293,7 @@ public class GGC2LanModule : BaseUnityPlugin
             if (LobbyManagerGGC.Instance == null || WindowManager.Instance == null)
             {
                 Logger.LogWarning("StartSearching callback: LobbyManagerGGC.Instance or WindowManager.Instance is null, aborting join.");
+                NetworkDiscoveryManagerGGC.StopListeningForNetworkMatches();
                 listening = false;
                 return;
             }
@@ -278,10 +310,12 @@ public class GGC2LanModule : BaseUnityPlugin
                 Logger.LogError("StartSearching join failed: " + e);
                 // Don't call SetOnlineSession(true) below - session never
                 // actually started, so leave suppressDisconnectKick off.
+                NetworkDiscoveryManagerGGC.StopListeningForNetworkMatches();
                 listening = false;
                 return;
             }
 
+            NetworkDiscoveryManagerGGC.StopListeningForNetworkMatches();
             SetOnlineSession(true);
             listening = false;
         });
@@ -304,8 +338,7 @@ public class GGC2LanModule : BaseUnityPlugin
         if (client == null || !client.isConnected) return null;
 
         int rtt = client.GetRTT();
-        if (rtt > 999) rtt = 999;
-        return rtt + "ms";
+        return (rtt > 999 ? "999+" : rtt.ToString()) + "ms";
     }
 
     private void OnGUI()
@@ -322,7 +355,7 @@ public class GGC2LanModule : BaseUnityPlugin
         float scale = GetScale();
         EnsureStyles(scale);
         float margin = ScreenMargin * scale;
-        float gap = PanelToggleGap * scale;
+        float gap = ToggleBtnMargin * scale;
 
         bool mainMenuOpen = IsMainMenuSceneLoaded() && !MainMenuGameState.MainMenuIsTransitional;
 
@@ -331,7 +364,7 @@ public class GGC2LanModule : BaseUnityPlugin
         Rect toggleRect = new Rect(Screen.width - toggleW - margin, margin, toggleW, toggleH);
 
         // Ping sits top-right too, to the left of the LAN button with the
-        // same gap the button uses toward the panel below it. When the LAN
+        // same gap the button uses toward the menu below it. When the LAN
         // button isn't shown (outside the main menu), the ping shifts over
         // into the button's own spot instead of leaving a gap there.
         float pingW = PingW * scale;
@@ -352,7 +385,7 @@ public class GGC2LanModule : BaseUnityPlugin
         // not during gameplay, not anywhere else.
         if (!mainMenuOpen) return;
 
-        DrawRect(toggleRect, toggleRect.Contains(Event.current.mousePosition) ? ColorButtonMainHover : ColorBlack);
+        DrawRect(toggleRect, toggleRect.Contains(Event.current.mousePosition) ? ColorToggleButtonHover : ColorBlack);
         if (GUI.Button(toggleRect, GUIContent.none, GUIStyle.none))
         {
             show = !show;
@@ -361,41 +394,44 @@ public class GGC2LanModule : BaseUnityPlugin
 
         if (!show) return;
 
-        float panelW = PanelW * scale;
-        float panelX = Screen.width - panelW - margin;
-        float panelY = toggleRect.yMax + PanelToggleGap * scale;
-        float pad = PanelPadding * scale;
+        float menuW = MenuW * scale;
+        float menuX = Screen.width - menuW - margin;
+        float menuY = toggleRect.yMax + ToggleBtnMargin * scale;
+        float pad = MenuPadding * scale;
 
         // Header row: title on the left, version on the right.
-        Rect headerRect = new Rect(panelX + pad, panelY + pad, panelW - pad * 2, HeaderFontSize * scale + 4 * scale);
+        Rect headerRect = new Rect(menuX + pad, menuY + pad, menuW - pad * 2, MenuHeaderFontSize * scale + 4 * scale);
 
-        float btnW = BtnW * scale;
-        float btnH = BtnH * scale;
-        float btnX = panelX + (panelW - btnW) / 2f;
-        float firstBtnY = headerRect.yMax + HeaderToButtonsGap * scale;
+        float btnW = MenuBtnW * scale;
+        float btnH = MenuBtnH * scale;
+        float btnX = menuX + (menuW - btnW) / 2f;
+        float firstBtnY = headerRect.yMax + MenuGap * scale;
 
         Rect hostRect = new Rect(btnX, firstBtnY, btnW, btnH);
-        Rect findRect = new Rect(btnX, hostRect.yMax + BtnGap * scale, btnW, btnH);
+        Rect findRect = new Rect(btnX, hostRect.yMax + MenuBtnGap * scale, btnW, btnH);
 
-        float panelH = (findRect.yMax - panelY) + pad;
-        Rect panelRect = new Rect(panelX, panelY, panelW, panelH);
+        float menuH = (findRect.yMax - menuY) + pad;
+        Rect menuRect = new Rect(menuX, menuY, menuW, menuH);
 
-        DrawRect(panelRect, ColorBlack);
+        DrawRect(menuRect, ColorBlack);
 
-        GUI.Label(headerRect, "GGC2LanModule", leftHeaderStyle);
-        GUI.Label(headerRect, "v1.5.0", rightHeaderStyle);
+        GUI.Label(headerRect, "GGC2LanModule", menuHeaderLeftStyle);
+        GUI.Label(headerRect, "v1.6.0", menuHeaderRightStyle);
 
         // ----- HOST LAN SERVER -----
         // Synced from the server to every player via UNET's SyncVar system,
         // true during the ~3s countdown after "START THE GAME" is clicked.
         // Works identically for the host and for joined clients - unlike a
         // locally-tracked flag, which would only ever see the host's click.
-        // Also blocked once actually in-game, as a safety net - the panel
+        // Also blocked once actually in-game, as a safety net - the menu
         // isn't drawn there anyway, but better safe than sorry.
-        bool gameStarting = NetworkCommunicator.lobbyIsLockedForGameStart
+        if (NetworkCommunicator.lobbyIsLockedForGameStart) gameStartLatched = true;
+        if (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateMainMenu) gameStartLatched = false;
+
+        bool gameStarting = gameStartLatched
             || (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateInGame);
 
-        DrawRect(hostRect, gameStarting ? ColorButtonBlockHover : (hostRect.Contains(Event.current.mousePosition) ? ColorButtonMenuHover : ColorWhite));
+        DrawRect(hostRect, gameStarting ? ColorMenuButtonBlock : (hostRect.Contains(Event.current.mousePosition) ? ColorMenuButtonHover : ColorWhite));
         if (!gameStarting && GUI.Button(hostRect, GUIContent.none, GUIStyle.none))
         {
             if (isHosting)
@@ -408,12 +444,12 @@ public class GGC2LanModule : BaseUnityPlugin
                 StartHosting();
             }
         }
-        GUI.Label(hostRect, isHosting ? "STOP HOSTING" : "HOST LAN SERVER", whiteBtnStyle);
+        GUI.Label(hostRect, isHosting ? "STOP HOSTING" : "HOST LAN SERVER", menuBtnStyle);
 
         // ----- FIND LAN SERVER -----
         DrawRect(findRect, gameStarting
-            ? ColorButtonBlockHover
-            : (findRect.Contains(Event.current.mousePosition) ? ColorButtonMenuHover : ColorWhite));
+            ? ColorMenuButtonBlock
+            : (findRect.Contains(Event.current.mousePosition) ? ColorMenuButtonHover : ColorWhite));
         if (!gameStarting && GUI.Button(findRect, GUIContent.none, GUIStyle.none))
         {
             if (listening)
@@ -426,7 +462,7 @@ public class GGC2LanModule : BaseUnityPlugin
                 StartSearching();
             }
         }
-        GUI.Label(findRect, listening ? "SEARCHING..." : "FIND LAN SERVER", whiteBtnStyle);
+        GUI.Label(findRect, listening ? "SEARCHING..." : "FIND LAN SERVER", menuBtnStyle);
     }
 }
 

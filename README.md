@@ -4,7 +4,8 @@ Adds LAN multiplayer support to Guns, Gore and Cannoli 2.
 - Star this repository to stay updated on new releases.
 - This project is still in development, so bugs may occur - feel free to open an [issue](https://github.com/ggc2-lan-dev/ggc2-lanmodule/issues/new/choose) if you run into one.
 
-> **Disclaimer:** This is an unofficial fan-made mod for Guns, Gore and Cannoli 2, not affiliated with or endorsed by Rogueside.
+> [!IMPORTANT]
+> This is an unofficial fan-made module/mod for Guns, Gore and Cannoli 2, not affiliated with or endorsed by Rogueside.
 > All game assets and trademarks belong to their respective owners.
 
 ## Installing the mod

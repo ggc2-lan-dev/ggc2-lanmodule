@@ -6,8 +6,7 @@ body:
     id: textarea-problem
     attributes:
       label: What happened?
-      description: Describe the problem, and how to reproduce it if you can.
-      placeholder: e.g. "STOP HOSTING" doesn't return me to the main menu.
+      description: Describe the problem and how to reproduce it if possible.
     validations:
       required: true
 
@@ -15,8 +14,9 @@ body:
     id: version-module
     attributes:
       label: Module version
-      description: Check the version shown in the mod's panel in the game's main menu, or check the file properties of your `GGC2LanModule.dll`.
+      description: You can find this in the module's panel on the game's main menu, or in the file properties of your `GGC2LanModule.dll`.
       options:
+        - v1.6.0
         - v1.5.0
         - v1.4.0
         - v1.3.0
@@ -30,6 +30,7 @@ body:
       options:
         - Windows
         - Mac
+        - Linux
         - Other
     validations:
       required: true
