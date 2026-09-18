@@ -3,12 +3,13 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
 
-[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.6.0")]
+[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.6.1")]
 public class GGC2LanModule : BaseUnityPlugin
 {
     // ===== Colors =====
     private static readonly Color ColorWhite = Color.white;
     private static readonly Color ColorBlack = Color.black;
+    private static readonly Color ColorRed = Color.red;
     private static readonly Color ColorToggleButtonHover = new Color(30f / 255f, 30f / 255f, 30f / 255f);
     private static readonly Color ColorMenuButtonHover = new Color(225f / 255f, 225f / 255f, 225f / 255f);
     private static readonly Color ColorMenuButtonBlock = new Color(150f / 255f, 150f / 255f, 150f / 255f);
@@ -27,7 +28,7 @@ public class GGC2LanModule : BaseUnityPlugin
     private const float MenuW = 340f;
     private const float MenuGap = 20f;
     private const float MenuPadding = 20f;
-    
+
     private const float MenuHeaderFontSize = 16f;
 
     private const float MenuBtnW = 300f;
@@ -63,7 +64,11 @@ public class GGC2LanModule : BaseUnityPlugin
     // a search gets "cancelled" without a direct stop-and-forget API.
     private int searchToken = 0;
 
+    // Latched version of NetworkCommunicator.lobbyIsLockedForGameStart (see
+    // Update()) - tracks whether a game start is in progress, independently
+    // of whether the menu panel is currently open.
     private bool gameStartLatched = false;
+
     private Font arialFont;
     private GUIStyle toggleBtnStyle;
     private GUIStyle menuHeaderStyle;
@@ -130,6 +135,11 @@ public class GGC2LanModule : BaseUnityPlugin
         {
             CancelSearch();
         }
+        // Tracked independently of the menu panel's visibility (show), so the
+        // HOST/FIND buttons are correctly blocked/unblocked even if the panel
+        // was closed and reopened while a game start was in progress.
+        if (NetworkCommunicator.lobbyIsLockedForGameStart) gameStartLatched = true;
+        if (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateMainMenu) gameStartLatched = false;
     }
 
     // Same check the game itself uses (GameLauncher.Update()) to know the
@@ -154,23 +164,6 @@ public class GGC2LanModule : BaseUnityPlugin
     {
         bool scaleChanged = !Mathf.Approximately(scale, lastScale);
 
-        if (menuHeaderStyle == null)
-        {
-            menuHeaderStyle = new GUIStyle();
-            menuHeaderStyle.font = arialFont;
-            menuHeaderStyle.fontStyle = FontStyle.Normal;
-            menuHeaderStyle.normal.textColor = ColorWhite;
-        }
-
-        if (menuBtnStyle == null)
-        {
-            menuBtnStyle = new GUIStyle();
-            menuBtnStyle.font = arialFont;
-            menuBtnStyle.fontStyle = FontStyle.Normal;
-            menuBtnStyle.normal.textColor = ColorBlack;
-            menuBtnStyle.alignment = TextAnchor.MiddleCenter;
-        }
-
         if (toggleBtnStyle == null)
         {
             toggleBtnStyle = new GUIStyle();
@@ -178,6 +171,14 @@ public class GGC2LanModule : BaseUnityPlugin
             toggleBtnStyle.fontStyle = FontStyle.Normal;
             toggleBtnStyle.normal.textColor = ColorWhite;
             toggleBtnStyle.alignment = TextAnchor.MiddleCenter;
+        }
+
+        if (menuHeaderStyle == null)
+        {
+            menuHeaderStyle = new GUIStyle();
+            menuHeaderStyle.font = arialFont;
+            menuHeaderStyle.fontStyle = FontStyle.Normal;
+            menuHeaderStyle.normal.textColor = ColorWhite;
         }
 
         if (menuHeaderLeftStyle == null)
@@ -190,12 +191,21 @@ public class GGC2LanModule : BaseUnityPlugin
             menuHeaderRightStyle = new GUIStyle(menuHeaderStyle) { alignment = TextAnchor.MiddleRight };
         }
 
+        if (menuBtnStyle == null)
+        {
+            menuBtnStyle = new GUIStyle();
+            menuBtnStyle.font = arialFont;
+            menuBtnStyle.fontStyle = FontStyle.Normal;
+            menuBtnStyle.normal.textColor = ColorBlack;
+            menuBtnStyle.alignment = TextAnchor.MiddleCenter;
+        }
+
         if (pingStyle == null)
         {
             pingStyle = new GUIStyle();
             pingStyle.font = arialFont;
             pingStyle.fontStyle = FontStyle.Normal;
-            pingStyle.normal.textColor = Color.red;
+            pingStyle.normal.textColor = ColorRed;
             pingStyle.alignment = TextAnchor.MiddleRight;
         }
 
@@ -203,11 +213,11 @@ public class GGC2LanModule : BaseUnityPlugin
         // them when the scale factor actually changes, not every frame.
         if (scaleChanged)
         {
-            menuHeaderStyle.fontSize = Mathf.RoundToInt(MenuHeaderFontSize * scale);
-            menuBtnStyle.fontSize = Mathf.RoundToInt(MenuBtnFontSize * scale);
             toggleBtnStyle.fontSize = Mathf.RoundToInt(ToggleBtnFontSize * scale);
+            menuHeaderStyle.fontSize = Mathf.RoundToInt(MenuHeaderFontSize * scale);
             menuHeaderLeftStyle.fontSize = menuHeaderStyle.fontSize;
             menuHeaderRightStyle.fontSize = menuHeaderStyle.fontSize;
+            menuBtnStyle.fontSize = Mathf.RoundToInt(MenuBtnFontSize * scale);
             pingStyle.fontSize = Mathf.RoundToInt(PingFontSize * scale);
             lastScale = scale;
         }
@@ -217,7 +227,7 @@ public class GGC2LanModule : BaseUnityPlugin
     {
         GUI.color = color;
         GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = Color.white;
+        GUI.color = ColorWhite;
     }
 
     // Keeps our own flag and the game's own (otherwise unused) pingVisible
@@ -416,7 +426,7 @@ public class GGC2LanModule : BaseUnityPlugin
         DrawRect(menuRect, ColorBlack);
 
         GUI.Label(headerRect, "GGC2LanModule", menuHeaderLeftStyle);
-        GUI.Label(headerRect, "v1.6.0", menuHeaderRightStyle);
+        GUI.Label(headerRect, "v1.6.1", menuHeaderRightStyle);
 
         // ----- HOST LAN SERVER -----
         // Synced from the server to every player via UNET's SyncVar system,
@@ -425,9 +435,7 @@ public class GGC2LanModule : BaseUnityPlugin
         // locally-tracked flag, which would only ever see the host's click.
         // Also blocked once actually in-game, as a safety net - the menu
         // isn't drawn there anyway, but better safe than sorry.
-        if (NetworkCommunicator.lobbyIsLockedForGameStart) gameStartLatched = true;
-        if (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateMainMenu) gameStartLatched = false;
-
+        // (gameStartLatched itself is maintained in Update() - see comment there.)
         bool gameStarting = gameStartLatched
             || (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateInGame);
 
