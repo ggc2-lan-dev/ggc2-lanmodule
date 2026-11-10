@@ -3,7 +3,7 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
 
-[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", "1.6.1")]
+[BepInPlugin("ggc2.lanmodule", "GGC2LanModule", ModuleBuildInfo.Version)]
 public class GGC2LanModule : BaseUnityPlugin
 {
     // ===== Colors =====
@@ -39,9 +39,8 @@ public class GGC2LanModule : BaseUnityPlugin
     private const float PingW = 90f;
     private const float PingFontSize = 16f;
 
-    // ===== LobbyManagerGGC.State / DisconnectType values used by the game
-    // (named here since the underlying enums aren't accessible by name from
-    // outside the game's assembly in a clean way) =====
+    // ===== LobbyManagerGGC.State / DisconnectType values used by the game =====
+    // (named here because the enums can't be referenced by name from outside the game's assembly)
     private const LobbyManagerGGC.State StateMainMenu = (LobbyManagerGGC.State)0;
     private const LobbyManagerGGC.State StateLobby = (LobbyManagerGGC.State)1;
     private const LobbyManagerGGC.State StateInGame = (LobbyManagerGGC.State)3;
@@ -52,21 +51,18 @@ public class GGC2LanModule : BaseUnityPlugin
     private bool isHosting = false;
     private bool show = false;
 
-    // While true, the game's TestConnection() coroutine is suppressed (see
-    // the Harmony patch below). That coroutine pings the online matchmaker
-    // relay every 10s and kicks the player to the main menu with a fake
-    // "no network" error when it fails - which it always does in a LAN
-    // game, since there's no relay to ping.
+    // While true, the game's TestConnection() coroutine is suppressed (see the Harmony patch
+    // below). That coroutine pings the online matchmaker relay every 10s and kicks the player
+    // to the main menu with a fake "no network" error when it fails, which always happens
+    // in a LAN game (there is no relay).
     public static bool suppressDisconnectKick = false;
 
-    // Bumped on every new search; a pending FIND callback only acts on its
-    // result if this still matches the token it started with - that's how
-    // a search gets "cancelled" without a direct stop-and-forget API.
+    // Incremented on every new search. A pending FIND callback acts only if its token still
+    // matches, which is how a search gets "cancelled" without a direct stop API.
     private int searchToken = 0;
 
-    // Latched version of NetworkCommunicator.lobbyIsLockedForGameStart (see
-    // Update()) - tracks whether a game start is in progress, independently
-    // of whether the menu panel is currently open.
+    // Latched copy of NetworkCommunicator.lobbyIsLockedForGameStart (see Update()):
+    // tracks whether a game start is in progress, even if the menu panel is closed.
     private bool gameStartLatched = false;
 
     private Font arialFont;
@@ -115,37 +111,31 @@ public class GGC2LanModule : BaseUnityPlugin
 
     private void Update()
     {
-        // If the game itself returned to the main menu (e.g. the player used
-        // the game's own "Leave Lobby" button), our HOST button needs to
-        // reset too, otherwise it stays stuck showing "STOP HOSTING" for a
-        // session that no longer exists. Not applied to "listening": while
-        // searching, the game legitimately stays in the MainMenu state until
-        // a host is actually found.
+        // If the game returned to the main menu on its own (e.g. the "Leave Lobby" button),
+        // reset our HOST button too, otherwise it stays on "STOP HOSTING" for a session that
+        // no longer exists. Not applied to "listening": while searching, the game legitimately
+        // stays in MainMenu until a host is found.
         if (isHosting && LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateMainMenu)
         {
             isHosting = false;
             SetOnlineSession(false);
         }
-        // If we're still searching for a LAN host but the player left the
-        // main menu some other way (e.g. started a regular offline game),
-        // the search must be stopped - otherwise the discovery listener
-        // keeps running in the background and could still join a LAN match
-        // mid-way through an unrelated solo session.
+        // If we're still searching but the player left the main menu another way (e.g. started
+        // an offline game), stop the search. Otherwise the discovery listener keeps running
+        // and could join a LAN match during a solo session.
         if (listening && LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state != StateMainMenu)
         {
             CancelSearch();
         }
-        // Tracked independently of the menu panel's visibility (show), so the
-        // HOST/FIND buttons are correctly blocked/unblocked even if the panel
-        // was closed and reopened while a game start was in progress.
+        // Tracked independently of the menu panel (show), so the HOST/FIND buttons stay
+        // blocked even if the panel was closed and reopened during a game start.
         if (NetworkCommunicator.lobbyIsLockedForGameStart) gameStartLatched = true;
         if (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateMainMenu) gameStartLatched = false;
     }
 
-    // Same check the game itself uses (GameLauncher.Update()) to know the
-    // main menu scene is actually loaded and showing - more reliable than
-    // LobbyManagerGGC.state, which already defaults to "MainMenu" before the
-    // menu is really up (e.g. during the boot/loading screen).
+    // Same check the game uses (GameLauncher.Update()) to know the main menu scene is
+    // really loaded. More reliable than LobbyManagerGGC.state, which is already
+    // "MainMenu" during the boot/loading screen.
     private bool IsMainMenuSceneLoaded()
     {
         if (LevelTypeData.mainMenuScene == null) return false;
@@ -209,8 +199,7 @@ public class GGC2LanModule : BaseUnityPlugin
             pingStyle.alignment = TextAnchor.MiddleRight;
         }
 
-        // Font sizes scale with the screen resolution, so only recompute
-        // them when the scale factor actually changes, not every frame.
+        // Font sizes depend on the screen scale, so recompute them only when it changes.
         if (scaleChanged)
         {
             toggleBtnStyle.fontSize = Mathf.RoundToInt(ToggleBtnFontSize * scale);
@@ -230,9 +219,8 @@ public class GGC2LanModule : BaseUnityPlugin
         GUI.color = ColorWhite;
     }
 
-    // Keeps our own flag and the game's own (otherwise unused) pingVisible
-    // field in sync - purely cosmetic, nothing reads pingVisible today, but
-    // it's the field the devs clearly intended for this exact purpose.
+    // Keeps our flag and the game's own pingVisible field in sync. Purely cosmetic:
+    // nothing reads pingVisible today, but the devs clearly intended it for this.
     private void SetOnlineSession(bool active)
     {
         suppressDisconnectKick = active;
@@ -255,10 +243,8 @@ public class GGC2LanModule : BaseUnityPlugin
         {
             LobbyManagerGGC.Instance.DestroyMatch(DisconnectVoluntary);
         }
-        // If Instance is already gone (e.g. the game tore down the session
-        // on its own between the click and this call), there's nothing left
-        // to destroy - our own state is already reset above, which is all
-        // that matters for the UI.
+        // If Instance is already gone (the game tore down the session on its own),
+        // there is nothing to destroy; our own state is already reset above.
     }
 
     private void StartHosting()
@@ -279,8 +265,8 @@ public class GGC2LanModule : BaseUnityPlugin
         catch (System.Exception e)
         {
             Logger.LogError("StartHosting failed: " + e);
-            // Best-effort rollback so the button doesn't get stuck on
-            // "STOP HOSTING" for a session that never actually started.
+            // Best-effort rollback so the button doesn't stay on "STOP HOSTING"
+            // for a session that never started.
             SetOnlineSession(false);
             isHosting = false;
             return;
@@ -318,8 +304,8 @@ public class GGC2LanModule : BaseUnityPlugin
             catch (System.Exception e)
             {
                 Logger.LogError("StartSearching join failed: " + e);
-                // Don't call SetOnlineSession(true) below - session never
-                // actually started, so leave suppressDisconnectKick off.
+                // Don't call SetOnlineSession(true) below: the session never started,
+                // so suppressDisconnectKick stays off.
                 NetworkDiscoveryManagerGGC.StopListeningForNetworkMatches();
                 listening = false;
                 return;
@@ -331,31 +317,40 @@ public class GGC2LanModule : BaseUnityPlugin
         });
     }
 
-    // Ping (RTT) display - just your own ping, as a plain "XXms" number.
-    // Works the same whether you're hosting or connected as a client:
-    // NetworkClient.GetRTT() reports each player's own connection.
+    private int lastRtt = int.MinValue;
+    private string lastPingText;
+
+    // Shows "Host" for the host (its own RTT is always 0) and the ping in ms for clients.
+    // The text is rebuilt only when the ping value changes.
     private string BuildPingText(LobbyManagerGGC.State state)
     {
         if (LobbyManagerGGC.Instance == null) return null;
         if (state != StateLobby && state != StateInGame) return null;
 
-        // state == InGame also covers regular offline/local play, since the
-        // game reuses the same networking manager for that too. Only show
-        // ping while we're actually in a session started via this mod.
+        // state == InGame also covers regular offline play (the game reuses the same
+        // networking manager). Show ping only in a session started via this mod.
         if (!suppressDisconnectKick) return null;
 
         NetworkClient client = LobbyManagerGGC.Instance.client;
         if (client == null || !client.isConnected) return null;
 
+        // The host's own client talks to itself (no network), so its RTT is always 0:
+        // show a label instead.
+        if (isHosting) return "Host";
+
         int rtt = client.GetRTT();
-        return (rtt > 999 ? "999+" : rtt.ToString()) + "ms";
+        if (rtt != lastRtt)
+        {
+            lastRtt = rtt;
+            lastPingText = (rtt > 999 ? "999+" : rtt.ToString()) + "ms";
+        }
+        return lastPingText;
     }
 
     private void OnGUI()
     {
-        // LobbyManagerGGC itself draws a small debug HUD ("hide" /
-        // "Initialize Broadcast" etc.) via its networkManagerHud field
-        // whenever that field's own showGUI is true. Not our UI - keep it off.
+        // LobbyManagerGGC draws its own small debug HUD ("hide" / "Initialize Broadcast" etc.)
+        // while networkManagerHud.showGUI is true. It isn't our UI, so keep it off.
         if (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.networkManagerHud != null
             && LobbyManagerGGC.Instance.networkManagerHud.showGUI)
         {
@@ -373,10 +368,9 @@ public class GGC2LanModule : BaseUnityPlugin
         float toggleH = ToggleBtnH * scale;
         Rect toggleRect = new Rect(Screen.width - toggleW - margin, margin, toggleW, toggleH);
 
-        // Ping sits top-right too, to the left of the LAN button with the
-        // same gap the button uses toward the menu below it. When the LAN
-        // button isn't shown (outside the main menu), the ping shifts over
-        // into the button's own spot instead of leaving a gap there.
+        // Ping sits top-right, to the left of the LAN button (same gap the button uses toward
+        // the menu below it). Outside the main menu the button is hidden, so the ping moves
+        // into the button's spot instead of leaving a gap.
         float pingW = PingW * scale;
         Rect pingRect = mainMenuOpen
             ? new Rect(toggleRect.x - gap - pingW, margin, pingW, toggleH)
@@ -391,8 +385,7 @@ public class GGC2LanModule : BaseUnityPlugin
             GUI.Label(pingRect, pingText, pingStyle);
         }
 
-        // Nothing else outside the main menu - not during boot/loading,
-        // not during gameplay, not anywhere else.
+        // Nothing else is drawn outside the main menu (boot/loading, gameplay, etc.).
         if (!mainMenuOpen) return;
 
         DrawRect(toggleRect, toggleRect.Contains(Event.current.mousePosition) ? ColorToggleButtonHover : ColorBlack);
@@ -426,19 +419,17 @@ public class GGC2LanModule : BaseUnityPlugin
         DrawRect(menuRect, ColorBlack);
 
         GUI.Label(headerRect, "GGC2LanModule", menuHeaderLeftStyle);
-        GUI.Label(headerRect, "v1.6.1", menuHeaderRightStyle);
+        GUI.Label(headerRect, ModuleBuildInfo.VersionLabel, menuHeaderRightStyle);
 
-        // ----- HOST LAN SERVER -----
-        // Synced from the server to every player via UNET's SyncVar system,
-        // true during the ~3s countdown after "START THE GAME" is clicked.
-        // Works identically for the host and for joined clients - unlike a
-        // locally-tracked flag, which would only ever see the host's click.
-        // Also blocked once actually in-game, as a safety net - the menu
-        // isn't drawn there anyway, but better safe than sorry.
-        // (gameStartLatched itself is maintained in Update() - see comment there.)
+        // Synced from the server to every player via UNET's SyncVar, true during the ~3s
+        // countdown after "START THE GAME" is clicked. Unlike a locally tracked flag, it works
+        // for joined clients too, not only for the host's click.
+        // Also blocked once actually in-game, as a safety net.
+        // (gameStartLatched itself is maintained in Update().)
         bool gameStarting = gameStartLatched
             || (LobbyManagerGGC.Instance != null && LobbyManagerGGC.Instance.state == StateInGame);
 
+        // ----- HOST LAN SERVER -----
         DrawRect(hostRect, gameStarting ? ColorMenuButtonBlock : (hostRect.Contains(Event.current.mousePosition) ? ColorMenuButtonHover : ColorWhite));
         if (!gameStarting && GUI.Button(hostRect, GUIContent.none, GUIStyle.none))
         {
@@ -493,12 +484,10 @@ class Patch_TestConnection
         return false;
     }
 
-    // A plain (non-yield) empty enumerator. Deliberately not written with
-    // "yield break": the C# compiler decorates yield-based iterators with
-    // System.Runtime.CompilerServices.IteratorStateMachineAttribute, which
-    // doesn't fully resolve under this game's old Mono runtime and made
-    // Harmony's PatchAll() throw a TypeLoadException while scanning the
-    // assembly.
+    // A plain (non-yield) empty enumerator. Deliberately not written with "yield break":
+    // the C# compiler decorates yield-based iterators with IteratorStateMachineAttribute,
+    // which doesn't fully resolve under this game's old Mono runtime and made Harmony's
+    // PatchAll() throw a TypeLoadException while scanning the assembly.
     static System.Collections.IEnumerator Empty()
     {
         return new object[0].GetEnumerator();

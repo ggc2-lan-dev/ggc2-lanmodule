@@ -2,36 +2,36 @@ name: Bug report
 description: Something isn't working as expected
 labels: ["bug"]
 body:
-  - type: textarea
-    id: textarea-problem
-    attributes:
-      label: What happened?
-      description: Describe the problem and how to reproduce it if possible.
-    validations:
-      required: true
+    - type: textarea
+      id: textarea-problem
+      attributes:
+          label: What happened?
+          description: Describe the problem and how to reproduce it if possible.
+      validations:
+          required: true
 
-  - type: dropdown
-    id: version-module
-    attributes:
-      label: Module version
-      description: You can find this in the module's panel on the game's main menu, or in the file properties of your `GGC2LanModule.dll`.
-      options:
-        - v1.6.1
-        - v1.6.0
-        - v1.5.0
-        - v1.4.0
-        - v1.3.0
-    validations:
-      required: true
+    - type: dropdown
+      id: version-module
+      attributes:
+          label: Module version
+          description: You can find this in the module's panel on the game's main menu, or in the file properties of your `GGC2LanModule.dll`.
+          options:
+              - v1.7.0
+              - v1.6.1
+              - v1.6.0
+              - v1.5.0
+              - v1.4.0
+              - v1.3.0
+      validations:
+          required: true
 
-  - type: dropdown
-    id: version-os
-    attributes:
-      label: Operating system
-      options:
-        - Windows
-        - Mac
-        - Linux
-        - Other
-    validations:
-      required: true
+    - type: dropdown
+      id: version-os
+      attributes:
+          label: Operating system
+          options:
+              - Windows
+              - Mac
+              - Linux
+      validations:
+          required: true

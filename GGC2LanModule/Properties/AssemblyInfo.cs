@@ -15,6 +15,13 @@ using System.Runtime.InteropServices;
 
 [assembly: Guid("3d5b6b77-32af-4429-ad6e-0a8094339832")]
 
-[assembly: AssemblyVersion("1.6.1.0")]
-[assembly: AssemblyFileVersion("1.6.1.0")]
-[assembly: AssemblyInformationalVersion("1.6.1")]
+[assembly: AssemblyVersion(ModuleBuildInfo.VersionFull)]
+[assembly: AssemblyFileVersion(ModuleBuildInfo.VersionFull)]
+[assembly: AssemblyInformationalVersion(ModuleBuildInfo.Version)]
+
+internal static class ModuleBuildInfo
+{
+    public const string Version = "1.7.0";
+    public const string VersionFull = Version + ".0";
+    public const string VersionLabel = "v" + Version;
+}
